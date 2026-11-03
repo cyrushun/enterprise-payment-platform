@@ -202,10 +202,14 @@ Important accounting rule: each posted journal must balance (total debits equal 
 ## Current milestone and next steps
 
 - [x] Phase 0: repository foundation, architecture, ADRs, initial schema, local infrastructure
-- [ ] Phase 1: customer, account, and ledger domain model and use cases
-- [ ] Phase 2: transfers, concurrency, idempotency, and failure handling
+- [x] Phase 1: customer and account APIs, account balance query, ledger journal validation
+- [x] Phase 2 implementation: transfers, persisted double-entry posting, concurrency, idempotency, and failure handling (run local verification)
 - [ ] Phase 3: transactional outbox, Kafka, and notifications
 - [ ] Phase 4: security, audit hardening, reconciliation, and resilience
 - [ ] Phase 5: load testing, observability, and deployment
 
 See `docs/requirements/business-requirements.md` and `docs/architecture/system-architecture.md`.
+
+Phase 1 implementation and API examples: `docs/phase-1.md` and `docs/phase-1-api-examples.md`.
+
+Phase 2 implementation and API examples: `docs/phase-2.md` and `docs/phase-2-api-examples.md`.

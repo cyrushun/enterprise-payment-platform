@@ -1,0 +1,22 @@
+# Java / Maven
+target/
+.mvn/wrapper/maven-wrapper.jar
+!**/src/**/target/
+
+# IntelliJ
+.idea/
+*.iml
+out/
+
+# Environment and secrets
+.env
+.env.*
+!.env
+*.pem
+*.key
+
+# Logs and local data
+*.log
+data/
+.DS_Store
+Thumbs.db

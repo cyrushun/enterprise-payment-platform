@@ -1,0 +1,349 @@
+{
+  "info": {
+    "name": "Enterprise Payment Platform - Phase 2 API Tests",
+    "description": "Phase 2 transfer, idempotency, retrieval and history tests. Prerequisite: create two active MYR accounts using the Phase 1 API, fund the source account to at least RM500 using the documented local-only SQL seed, then set collection variables.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "sourceAccountId",
+      "value": ""
+    },
+    {
+      "key": "destinationAccountId",
+      "value": ""
+    },
+    {
+      "key": "idempotencyKey",
+      "value": "phase2-transfer-001"
+    },
+    {
+      "key": "insufficientFundsKey",
+      "value": "phase2-insufficient-001"
+    },
+    {
+      "key": "transferId",
+      "value": ""
+    },
+    {
+      "key": "transferReference",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Transfers and idempotency",
+      "item": [
+        {
+          "name": "01 - Create transfer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/transfers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "{{baseUrl}}",
+                "api",
+                "v1",
+                "transfers"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceAccountId\": \"{{sourceAccountId}}\",\n  \"destinationAccountId\": \"{{destinationAccountId}}\",\n  \"amount\": 125.5,\n  \"currency\": \"MYR\",\n  \"description\": \"Postman Phase 2 transfer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201 Created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('Transfer response is complete', () => { pm.expect(body.id).to.be.a('string'); pm.expect(body.reference).to.be.a('string'); pm.expect(body.status).to.eql('COMPLETED'); });",
+                  "pm.collectionVariables.set('transferId', body.id); pm.collectionVariables.set('transferReference', body.reference);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02 - Replay same idempotency key (must not duplicate)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/transfers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "{{baseUrl}}",
+                "api",
+                "v1",
+                "transfers"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceAccountId\": \"{{sourceAccountId}}\",\n  \"destinationAccountId\": \"{{destinationAccountId}}\",\n  \"amount\": 125.5,\n  \"currency\": \"MYR\",\n  \"description\": \"Postman Phase 2 transfer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201 replay', () => pm.response.to.have.status(201));",
+                  "pm.test('Original transfer returned', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('transferId')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03 - Reuse key with different payload (expect 409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/transfers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "{{baseUrl}}",
+                "api",
+                "v1",
+                "transfers"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceAccountId\": \"{{sourceAccountId}}\",\n  \"destinationAccountId\": \"{{destinationAccountId}}\",\n  \"amount\": 126,\n  \"currency\": \"MYR\",\n  \"description\": \"Different payload\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 409 Conflict', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04 - Get transfer by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/transfers/{{transferId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "{{baseUrl}}",
+                "api",
+                "v1",
+                "transfers",
+                "{{transferId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Correct transfer', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('transferId')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05 - Get transfer by reference",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/transfers/reference/{{transferReference}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "{{baseUrl}}",
+                "api",
+                "v1",
+                "transfers",
+                "reference",
+                "{{transferReference}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Correct reference', () => pm.expect(pm.response.json().reference).to.eql(pm.collectionVariables.get('transferReference')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "06 - Source account transfer history",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/accounts/{{sourceAccountId}}/transfers?page=0&size=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "{{baseUrl}}",
+                "api",
+                "v1",
+                "accounts",
+                "{{sourceAccountId}}",
+                "transfers"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Page content exists', () => pm.expect(pm.response.json().content).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "07 - Insufficient balance (expect 422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{insufficientFundsKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/transfers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "{{baseUrl}}",
+                "api",
+                "v1",
+                "transfers"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceAccountId\": \"{{sourceAccountId}}\",\n  \"destinationAccountId\": \"{{destinationAccountId}}\",\n  \"amount\": 999999999,\n  \"currency\": \"MYR\",\n  \"description\": \"Expected insufficient funds\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 422 Unprocessable Entity', () => pm.response.to.have.status(422));",
+                  "pm.test('Stable error code', () => pm.expect(pm.response.json().code).to.eql('INSUFFICIENT_BALANCE'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
