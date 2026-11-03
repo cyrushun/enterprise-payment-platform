@@ -1,0 +1,128 @@
+{
+  "info": {
+    "name": "Enterprise Payment Platform - Phase 3 API Tests",
+    "description": "Phase 3 outbox and notification monitoring. First complete a successful Phase 2 transfer and wait for Kafka consumer processing. Set accountId to either account UUID from that transfer.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "accountId",
+      "value": ""
+    },
+    {
+      "key": "outboxEventId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Outbox and Notifications",
+      "item": [
+        {
+          "name": "01 - List outbox events",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/outbox/events?page=0&size=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "outbox",
+                "events?page=0&size=20"
+              ]
+            },
+            "description": "Phase 3 development verification endpoint."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Page response', () => pm.expect(body.content).to.be.an('array'));",
+                  "if (body.content.length) pm.collectionVariables.set('outboxEventId', body.content[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02 - Get outbox event by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/outbox/events/{{outboxEventId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "outbox",
+                "events",
+                "{{outboxEventId}}"
+              ]
+            },
+            "description": "Phase 3 development verification endpoint."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Event status is valid', () => pm.expect(['PENDING','PROCESSING','RETRY','PUBLISHED','DEAD']).to.include(pm.response.json().status));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03 - List account notifications",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/notifications?accountId={{accountId}}&page=0&size=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications?accountId={{accountId}}&page=0&size=20"
+              ]
+            },
+            "description": "Phase 3 development verification endpoint."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Page response', () => pm.expect(body.content).to.be.an('array'));",
+                  "pm.test('Notifications belong to requested account', () => body.content.forEach(n => pm.expect(n.recipientAccountId).to.eql(pm.collectionVariables.get('accountId'))));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
