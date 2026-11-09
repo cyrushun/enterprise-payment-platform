@@ -1,23 +1,20 @@
 # Enterprise Payment Platform
 
-A portfolio-grade, simulated banking and payment platform built to demonstrate senior-level Java engineering: transactional correctness, concurrency control, idempotency, double-entry accounting, event-driven integration, security, observability, and performance engineering.
+A portfolio-grade, simulated banking and payment platform demonstrating senior-level Java engineering: transactional correctness, concurrency control, idempotency, double-entry accounting, transactional outbox/event-driven integration, identity/security, auditability, reconciliation and operational resilience.
 
-> **Disclaimer:** This is an educational simulation. It is not intended to hold, transfer, or process real customer funds.
+> **Disclaimer:** Educational simulation only. It is not intended to hold, transfer, or process real customer funds.
 
-## Phase 0 scope
+## Current project status
 
-Phase 0 establishes the engineering foundation:
+| Phase | Scope | Status in this repository |
+|---|---|---|
+| 0 | Foundation, architecture, requirements, initial schema and local infrastructure | Implemented |
+| 1 | Customers, accounts and balance APIs | Implemented |
+| 2 | Transfers, double-entry ledger, concurrency and idempotency | Implemented; regression verification required after later changes |
+| 3 | Transactional outbox, Kafka consumer/publisher and notifications | Implemented; operational hardening remains |
+| 4 | JWT/RBAC, audit, reconciliation, dependency resilience, outbox operations and regression coverage | Implemented in baseline; execute the Phase 4 runbook locally before marking verified |
 
-- Business scope, requirements, and non-functional requirements
-- Modular-monolith architecture and module boundaries
-- Architecture decision records (ADRs)
-- Java 21 + Spring Boot 4 + Maven project skeleton
-- PostgreSQL and Redis local infrastructure
-- Initial Flyway schema
-- OpenCode repository guidance
-- Local setup and verification instructions
-
-Kafka is intentionally deferred until the transactional core and the Transactional Outbox are implemented. This keeps the first milestone focused on correctness rather than infrastructure breadth.
+Do not interpret a phase label as production readiness. The detailed phase docs identify implemented behavior and outstanding work.
 
 ## Technology baseline
 
@@ -26,53 +23,56 @@ Kafka is intentionally deferred until the transactional core and the Transaction
 | Language | Java 21 LTS |
 | Framework | Spring Boot 4.0.0 |
 | Build | Maven |
-| Persistence | Spring Data JPA / Hibernate |
+| Persistence | Spring Data JPA / Hibernate, JDBC where appropriate |
 | Database | PostgreSQL 17 |
 | Schema migration | Flyway |
 | Cache | Redis 7 |
-| API | REST, JSON, OpenAPI (to be added with API phase) |
+| Messaging | Apache Kafka (KRaft mode in local Compose) |
+| Security | Spring Security, RSA/RS256 JWT, BCrypt |
 | Testing | JUnit 5, Mockito, Testcontainers |
-| Local environment | Docker Desktop on Windows 11 |
-| IDE | IntelliJ IDEA |
-| AI coding assistant | OpenCode |
+| Local environment | Docker Desktop / Docker Compose |
 
-Versions are pinned in `pom.xml` and `docker-compose.yml` for reproducible setup. Review upgrade notes before changing major versions.
+Versions are pinned in `pom.xml` and `docker-compose.yml`.
 
-## Repository map
+## Repository structure
 
 ```text
 enterprise-payment-platform/
-├── AGENTS.md
-├── opencode.json
 ├── README.md
 ├── pom.xml
 ├── docker-compose.yml
 ├── .env.example
-├── .gitignore
+├── AGENTS.md
 ├── docs/
+│   ├── phase-0.md
+│   ├── phase-1.md
+│   ├── phase-1-api-examples.md
+│   ├── phase-2.md
+│   ├── phase-2-api-examples.md
+│   ├── phase-3.md
+│   ├── phase-3-api-examples.md
+│   ├── phase-4.md
+│   ├── phase-4-api-examples.md
+│   ├── verification-and-testing.md
 │   ├── requirements/
 │   ├── architecture/
-│   │   └── decisions/
 │   ├── database/
 │   ├── api/
 │   └── interview/
-├── src/
-│   ├── main/
-│   │   ├── java/com/enterprise/payment/
-│   │   └── resources/db/migration/
-│   └── test/java/com/enterprise/payment/
-└── deployment/monitoring/
+├── src/main/java/com/enterprise/payment/
+├── src/main/resources/
+│   ├── application.yml
+│   └── db/migration/
+└── src/test/java/com/enterprise/payment/
 ```
 
-## Quick start — Windows 11
+## Prerequisites
 
-### Prerequisites
-
-1. Install a JDK 21 distribution (Temurin or Microsoft Build of OpenJDK).
-2. Install IntelliJ IDEA.
-3. Install Docker Desktop and enable the WSL 2 backend.
-4. Install Git.
-5. Optional: install OpenCode and configure your preferred model/provider.
+- JDK 21
+- Maven 3.9+
+- Docker Desktop with Docker Compose
+- Git
+- Optional: IntelliJ IDEA and OpenCode
 
 Verify:
 
@@ -83,129 +83,98 @@ docker version
 docker compose version
 ```
 
-Ensure `java` and Maven report Java 21.
+## Quick start — Windows PowerShell
 
-### 1. Configure environment
-
-Copy the example file:
+1. Configure local environment. If `.env.example` exists, copy it:
 
 ```powershell
-Copy-Item .env.example .env
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
-The default credentials are for local development only. Do not reuse them outside a local machine.
-
-### 2. Start infrastructure
-
-From the repository root:
+2. Start dependencies:
 
 ```powershell
 docker compose up -d
 docker compose ps
 ```
 
-PostgreSQL is exposed on `localhost:5432`; Redis is exposed on `localhost:6379`.
-
-### 3. Run the application
-
-In IntelliJ IDEA:
-
-1. Open the repository root as a Maven project.
-2. Set Project SDK and Maven runner JDK to 21.
-3. Wait for Maven dependency import.
-4. Run `PaymentPlatformApplication`.
-
-Or use PowerShell:
+3. Run the automated test suite:
 
 ```powershell
-.\mvnw.cmd spring-boot:run
+mvn clean test
 ```
 
-If Maven Wrapper has not yet been generated, use:
+4. Start the application:
 
 ```powershell
 mvn spring-boot:run
 ```
 
-The application runs on `http://localhost:8080`.
-
-### 4. Verify
+5. Check health:
 
 ```powershell
 Invoke-RestMethod http://localhost:8080/actuator/health
 ```
 
-Expected status includes `UP`. Flyway applies the initial schema on application startup.
+See [Verification and Testing](docs/verification-and-testing.md) for migration checks, API smoke tests, regression tests and failure scenarios.
 
-### 5. Inspect PostgreSQL
+## Database migration policy
 
-```powershell
-docker compose exec postgres psql -U payment_app -d payment_platform
-```
+Flyway migrations are append-only. The current migration sequence is:
 
-Useful SQL:
+- V1 — foundational customers, accounts, transfers, ledger, idempotency, outbox and audit schema.
+- V2 — Phase 2 transfer-integrity schema changes.
+- V3 — Phase 3 outbox, processed-event and notification changes.
+- V4 — Phase 4 users, roles, refresh tokens and reconciliation tables.
+- V5 — Phase 4 operations hardening, outbox lease fencing and operational indexes.
+
+**Never edit V1, V2 or V3 after they have been applied.** Add a new migration with the next version for schema changes. Verify migration history with:
 
 ```sql
-\dt
-SELECT * FROM flyway_schema_history ORDER BY installed_rank;
+SELECT version, description, success
+FROM flyway_schema_history
+ORDER BY installed_rank;
 ```
 
-Exit with `\q`.
+## Security and secrets
 
-### 6. Stop infrastructure
+Local/test RSA keys are not production credentials. Use a secret manager or protected mounted files for production key material. Do not commit private keys, `.env` secrets, access tokens, refresh tokens or real customer data. Public registration grants only the `CUSTOMER` role.
 
-```powershell
-docker compose down
-```
+## Phase documentation
 
-To remove local database data as well:
+- [Phase 0 — Foundation](docs/phase-0.md)
+- [Phase 1 — Customers and Accounts](docs/phase-1.md) · [API examples](docs/phase-1-api-examples.md)
+- [Phase 2 — Transfers and Ledger](docs/phase-2.md) · [API examples](docs/phase-2-api-examples.md)
+- [Phase 3 — Outbox, Kafka and Notifications](docs/phase-3.md) · [API examples](docs/phase-3-api-examples.md)
+- [Phase 4 — Security, Audit and Reconciliation](docs/phase-4.md) · [API examples](docs/phase-4-api-examples.md)
+- [Verification and Testing Guide](docs/verification-and-testing.md)
+- [Complete Phase 4 Testing Guide (4.1–4.6)](docs/verification/phase-4-complete-testing-guide.md)
 
-```powershell
-docker compose down -v
-```
+## Development rules
 
-**Warning:** `down -v` deletes the local PostgreSQL and Redis volumes.
+1. Read `AGENTS.md` and relevant phase docs before changing code.
+2. Every phase implementation must update its phase document, API examples, README status/links, and verification guide.
+3. Add tests for each new business/security behavior.
+4. Use new Flyway migrations; never rewrite applied migrations.
+5. Preserve existing API contracts unless a documented, versioned change is intended.
+6. Never mutate posted ledger entries; use compensating entries.
+7. Do not log credentials, tokens, or sensitive payment data.
+8. Record material architecture changes as ADRs.
 
-## Configuration
+## Documentation and verification
 
-Spring configuration is in `src/main/resources/application.yml`. Environment variables can override local defaults. See `.env.example`.
+- API contract overview: `docs/api/api-specification.md`
+- Architecture: `docs/architecture/`
+- Phase guides: `docs/phase-0.md` through `docs/phase-4.md`
+- Phase API examples: `docs/phase-1-api-examples.md` through `docs/phase-4-api-examples.md`
+- Per-phase verification plans: `docs/verification/phase-0-verification.md` through `phase-4-verification.md`
+- Combined test runbook: `docs/verification-and-testing.md`
+- Postman collections: Phase 1, Phase 2, Phase 3, and `Enterprise-Payment-Platform-Phase4.postman_collection.json`
 
-Do not commit `.env`, credentials, tokens, private keys, or production secrets.
+Phase 4 Postman coverage includes registration/login/refresh/logout, RBAC, reconciliation success, malformed IDs, outbox 404/409, validation and Kafka DLT authorization checks. Dependency outage scenarios are run manually using the complete guide. Follow the [complete Phase 4 testing guide](docs/verification/phase-4-complete-testing-guide.md) for 4.1–4.6 test steps, expected error codes, SQL checks, resilience scenarios and regression runs. Documentation describes intended checks; execute them locally and record results before claiming verification.
 
-## Database schema
+### Phase 4 operations scope (4.2–4.6)
 
-The first migration creates the foundational entities:
+Phase 4 now includes audit events, account/ledger/transfer reconciliation with persisted discrepancies, dependency timeouts/readiness checks, leased/fenced outbox retry and DEAD-event replay operations, and expanded positive/negative Postman verification. Manual reconciliation now propagates scan failures rather than returning a false success response; Kafka DLT timeout/broker failures map to sanitized 503 responses. See `docs/phase-4.md`, `docs/api/api-specification.md`, `docs/architecture/system-architecture.md`, and `docs/verification/phase-4-verification.md`.
 
-- `customers`
-- `accounts`
-- `transfers`
-- `ledger_transactions`
-- `ledger_entries`
-- `idempotency_records`
-- `outbox_events`
-- `audit_logs`
-
-See `docs/database/database-design.md`.
-
-Important accounting rule: each posted journal must balance (total debits equal total credits). A row-level `CHECK` constraint cannot enforce a sum across multiple rows. The application posting transaction and a later database-level deferred validation strategy must enforce this invariant. Never treat a transfer status alone as proof that the ledger is correct.
-
-## Development workflow
-
-1. Read `AGENTS.md` before using OpenCode.
-2. Read relevant requirements and ADRs before implementing a feature.
-3. Create or update an ADR when a material architecture decision changes.
-4. Add tests with every business behavior.
-5. Use Flyway for all schema changes; do not rely on Hibernate schema auto-update.
-6. Never update or delete posted ledger entries. Corrections are represented by compensating entries.
-7. Do not log secrets, authentication tokens, or full sensitive payment data.
-
-## Current milestone and next steps
-
-- [x] Phase 0: repository foundation, architecture, ADRs, initial schema, local infrastructure
-- [ ] Phase 1: customer, account, and ledger domain model and use cases
-- [ ] Phase 2: transfers, concurrency, idempotency, and failure handling
-- [ ] Phase 3: transactional outbox, Kafka, and notifications
-- [ ] Phase 4: security, audit hardening, reconciliation, and resilience
-- [ ] Phase 5: load testing, observability, and deployment
-
-See `docs/requirements/business-requirements.md` and `docs/architecture/system-architecture.md`.
+**Development JWT keys:** `src/main/resources/keys/jwt-public.pem` and `jwt-private.pem` are the supplied local development pair. Never deploy this private key to production; configure external key resources or a managed key service.
