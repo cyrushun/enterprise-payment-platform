@@ -38,7 +38,7 @@ flowchart TB
     TU --> JPA
     LU --> JPA
     JPA --> PG
-    AU -. optional cache .-> REDIS
+    REST -->|rate-limit counters (Phase 4.7)| REDIS
     PG --> OUT
     OUT -. later .-> KAFKA
 ```

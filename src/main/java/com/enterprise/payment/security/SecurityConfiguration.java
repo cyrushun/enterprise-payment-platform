@@ -1,9 +1,14 @@
 package com.enterprise.payment.security;
 
+import com.enterprise.payment.security.ratelimit.ApiRateLimitFilter;
+import com.enterprise.payment.security.ratelimit.RateLimitProperties;
+import com.enterprise.payment.security.ratelimit.RateLimitStore;
 import com.enterprise.payment.shared.error.ApiError;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.List;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -15,13 +20,16 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
 @EnableMethodSecurity
+@EnableConfigurationProperties(RateLimitProperties.class)
 public class SecurityConfiguration {
   @Bean
-  SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper objectMapper)
+  SecurityFilterChain securityFilterChain(
+      HttpSecurity http, ObjectMapper objectMapper, ApiRateLimitFilter rateLimitFilter)
       throws Exception {
     return http.csrf(AbstractHttpConfigurer::disable)
         .cors(Customizer.withDefaults())
@@ -67,6 +75,7 @@ public class SecurityConfiguration {
                     .authenticated())
         .oauth2ResourceServer(
             oauth -> oauth.jwt(jwt -> jwt.jwtAuthenticationConverter(new JwtRoleConverter())))
+        .addFilterAfter(rateLimitFilter, BearerTokenAuthenticationFilter.class)
         .build();
   }
 
@@ -82,6 +91,20 @@ public class SecurityConfiguration {
     response.setCharacterEncoding(java.nio.charset.StandardCharsets.UTF_8.name());
     objectMapper.writeValue(
         response.getOutputStream(), new ApiError(code, message, Instant.now(), List.of()));
+  }
+
+  @Bean
+  ApiRateLimitFilter apiRateLimitFilter(
+      RateLimitStore store, RateLimitProperties properties, ObjectMapper objectMapper) {
+    return new ApiRateLimitFilter(store, properties, objectMapper);
+  }
+
+  @Bean
+  FilterRegistrationBean<ApiRateLimitFilter> disableContainerRegistration(
+      ApiRateLimitFilter filter) {
+    FilterRegistrationBean<ApiRateLimitFilter> registration = new FilterRegistrationBean<>(filter);
+    registration.setEnabled(false);
+    return registration;
   }
 
   @Bean

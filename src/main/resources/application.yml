@@ -98,6 +98,24 @@ app:
     poll-interval-ms: ${OUTBOX_POLL_INTERVAL_MS:1000}
     batch-size: ${OUTBOX_BATCH_SIZE:25}
     max-attempts: ${OUTBOX_MAX_ATTEMPTS:8}
+  rate-limit:
+    enabled: ${RATE_LIMIT_ENABLED:true}
+    # Fail open preserves API availability during Redis outages; security monitoring must alert on degraded mode.
+    fail-open: ${RATE_LIMIT_FAIL_OPEN:true}
+    # Enable only when the application is behind a trusted proxy that overwrites X-Forwarded-For.
+    trust-forwarded-headers: ${RATE_LIMIT_TRUST_FORWARDED_HEADERS:false}
+    login:
+      limit: ${RATE_LIMIT_LOGIN_LIMIT:5}
+      window: ${RATE_LIMIT_LOGIN_WINDOW:1m}
+    registration:
+      limit: ${RATE_LIMIT_REGISTER_LIMIT:5}
+      window: ${RATE_LIMIT_REGISTER_WINDOW:1h}
+    transfer:
+      limit: ${RATE_LIMIT_TRANSFER_LIMIT:10}
+      window: ${RATE_LIMIT_TRANSFER_WINDOW:1m}
+    general:
+      limit: ${RATE_LIMIT_GENERAL_LIMIT:100}
+      window: ${RATE_LIMIT_GENERAL_WINDOW:1m}
   security:
     jwt:
       issuer: enterprise-payment-platform
@@ -129,6 +147,24 @@ spring:
 app:
   outbox:
     enabled: false
+  rate-limit:
+    enabled: ${RATE_LIMIT_ENABLED:true}
+    # Fail open preserves API availability during Redis outages; security monitoring must alert on degraded mode.
+    fail-open: ${RATE_LIMIT_FAIL_OPEN:true}
+    # Enable only when the application is behind a trusted proxy that overwrites X-Forwarded-For.
+    trust-forwarded-headers: ${RATE_LIMIT_TRUST_FORWARDED_HEADERS:false}
+    login:
+      limit: ${RATE_LIMIT_LOGIN_LIMIT:5}
+      window: ${RATE_LIMIT_LOGIN_WINDOW:1m}
+    registration:
+      limit: ${RATE_LIMIT_REGISTER_LIMIT:5}
+      window: ${RATE_LIMIT_REGISTER_WINDOW:1h}
+    transfer:
+      limit: ${RATE_LIMIT_TRANSFER_LIMIT:10}
+      window: ${RATE_LIMIT_TRANSFER_WINDOW:1m}
+    general:
+      limit: ${RATE_LIMIT_GENERAL_LIMIT:100}
+      window: ${RATE_LIMIT_GENERAL_WINDOW:1m}
   security:
     jwt:
       public-key-location: classpath:keys/jwt-public.pem

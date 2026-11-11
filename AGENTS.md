@@ -85,3 +85,9 @@ Each feature should separate API/application/domain/infrastructure concerns when
 3. Run or state the exact build/test commands.
 4. Report test results honestly; never claim tests passed if they were not run.
 5. Identify unresolved risks and follow-up work.
+
+
+## Phase 4.7 rate limiting
+- Redis is actively used for atomic, expiring API rate-limit counters.
+- PostgreSQL remains the sole financial source of truth. Never use Redis for balances, ledger posting, transfer locking, or idempotency correctness.
+- Rate-limit behavior and Redis outage policy are configured under `app.rate-limit`.

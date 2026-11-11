@@ -10,7 +10,7 @@ flowchart TB
     end
     Browser -->|localhost:8080| IDE
     IDE -->|localhost:5432| PG
-    IDE -->|localhost:6379| Redis
+    IDE -->|localhost:6379 - API rate-limit counters| Redis
 ```
 
 The Spring Boot application runs on the Windows host during development. PostgreSQL and Redis run in Docker containers. In a containerized application deployment, use Compose service DNS names (for example `postgres`) rather than `localhost`.

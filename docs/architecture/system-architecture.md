@@ -15,7 +15,7 @@ flowchart LR
     API --> App[Application Use Cases]
     App --> Domain[Domain Modules]
     Domain --> DB[(PostgreSQL)]
-    App --> Cache[(Redis)]
+    App -->|rate-limit counters| Cache[(Redis)]
     App --> Outbox[(Transactional Outbox)]
     Outbox -. Phase 3 publisher .-> Kafka[(Kafka)]
     Kafka -. Phase 3 consumer .-> Notify[Notification Worker]
@@ -113,7 +113,7 @@ The business transaction writes an outbox row in PostgreSQL. A separate publishe
 
 ## 9. Data ownership
 
-PostgreSQL is the system of record. Redis is for non-authoritative caching, rate limiting, and short-lived coordination only. A cache outage must not create or lose a financial posting.
+PostgreSQL is the system of record. Redis stores atomic, expiring API rate-limit counters (Phase 4.7). It is non-authoritative and is never used for balances, ledger posting, transfer locking or idempotency correctness. A Redis outage follows the configured fail-open/fail-closed rate-limiter policy and must not create or lose a financial posting.
 
 ## 10. Security baseline
 
@@ -133,7 +133,7 @@ PostgreSQL is the system of record. Redis is for non-authoritative caching, rate
 | Database unavailable before commit | Fail request; no financial state committed |
 | Application crashes before commit | PostgreSQL rolls back open transaction |
 | Client times out after commit | Retry with same idempotency key returns original result |
-| Redis unavailable | Core transfer remains correct; cache-dependent features degrade |
+| Redis unavailable | Core transfer correctness remains PostgreSQL-backed; rate limiting follows configured fail-open/fail-closed policy |
 | Kafka unavailable | Outbox remains durable; publisher retries later |
 | Consumer receives duplicate | Consumer deduplicates by event ID |
 | Deadlock | One transaction aborts; bounded retry of safe operation |
@@ -157,3 +157,8 @@ Phase 4 adds an identity/authentication layer within the existing Payment API (n
 - Data-source timeouts are bounded for PostgreSQL/Hikari and Redis; Kafka producer retries/idempotence and listener retry + DLT recovery are configured. Actuator readiness includes DB, Redis, Kafka, and readiness state; liveness is process-oriented.
 - Outbox claiming uses PostgreSQL `FOR UPDATE SKIP LOCKED`, lease expiry, and a per-claim lease token. A stale publisher cannot mark an event published/failed after another worker has reclaimed it (fencing). Attempts use bounded exponential retry; terminal events become DEAD and can be replayed by operations.
 - Phase 4.6 includes security/integration/regression verification instructions and Postman coverage. A local classpath RSA key pair is provided for developer convenience only; production private keys must be externalized/managed by KMS or a secret store.
+
+
+## Phase 4.7 rate limiting
+
+The Spring Security filter applies per-IP login/registration limits and per-customer transfer/general API limits using Redis atomic fixed-window counters. See [Phase 4.7](../phase-4.md).

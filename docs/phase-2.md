@@ -1,75 +1,146 @@
 # Phase 2 — Transfers, Ledger Posting, Concurrency and Idempotency
 
-## Delivered scope
+## 2.1 Objective
 
-- Synchronous account-to-account transfers through `POST /api/v1/transfers`.
-- PostgreSQL pessimistic row locks acquired in deterministic UUID order.
-- Source and destination status/currency validation and overdraft prevention.
-- Atomic account balance updates, transfer persistence and double-entry ledger posting.
-- Existing `JournalValidator` reused before ledger persistence.
-- Persisted idempotency records, request SHA-256 fingerprint and transaction-scoped PostgreSQL advisory lock for concurrent duplicate keys.
-- Transfer lookup by ID/reference and pageable account transfer history.
+Implement synchronous account-to-account transfers with transactional balance updates, persisted double-entry ledger journals, deterministic account locking and request idempotency.
 
-## APIs
+## 2.2 Financial and concurrency invariants
 
-| Method | Path | Description |
+- Both account rows are locked with pessimistic write locks in deterministic UUID order.
+- Source and destination accounts must be ACTIVE and use the requested currency.
+- The source account must have sufficient available balance.
+- Account balance changes, transfer persistence, ledger journal/entries and the successful idempotency result commit in one PostgreSQL transaction.
+- The source account receives a DEBIT entry and the destination receives a CREDIT entry in this simulation.
+- Each journal must balance: total DEBIT equals total CREDIT.
+- `Idempotency-Key` is mandatory for transfer creation. The same key and same payload return the original transfer; the same key with a different payload returns a conflict.
+- PostgreSQL advisory transaction locking serializes concurrent requests using the same idempotency scope/key before the idempotency row exists. The unique constraint remains the durable final guard.
+
+## 2.3 API contract
+
+| Method | Endpoint | Purpose |
 |---|---|---|
-| POST | `/api/v1/transfers` | Execute transfer; requires `Idempotency-Key` |
-| GET | `/api/v1/transfers/{id}` | Retrieve transfer |
-| GET | `/api/v1/transfers/reference/{reference}` | Retrieve by reference |
-| GET | `/api/v1/accounts/{accountId}/transfers` | Pageable incoming/outgoing history |
+| POST | `/api/v1/transfers` | Execute a transfer; requires `Idempotency-Key` |
+| GET | `/api/v1/transfers/{id}` | Retrieve transfer by ID |
+| GET | `/api/v1/transfers/reference/{reference}` | Retrieve transfer by reference |
+| GET | `/api/v1/accounts/{accountId}/transfers` | Retrieve pageable incoming/outgoing history |
 
-### Create transfer
+See `docs/phase-2-api-examples.md` for request examples and SQL.
 
-```http
-POST /api/v1/transfers
-Idempotency-Key: transfer-demo-001
-Content-Type: application/json
-```
+## 2.4 Test preparation
 
-```json
-{
-  "sourceAccountId": "<source-account-uuid>",
-  "destinationAccountId": "<destination-account-uuid>",
-  "amount": 125.5000,
-  "currency": "MYR",
-  "description": "Invoice payment"
-}
-```
-
-The endpoint returns HTTP 201 for both the first successful request and a replay of the same key/payload. Reusing a key with a different payload returns HTTP 409. Insufficient funds returns HTTP 422. A business-rejected transfer is not persisted as a transfer or idempotency result in this phase.
-
-## Transaction and locking model
-
-1. Validate request and calculate a canonical SHA-256 payload hash.
-2. Acquire `pg_advisory_xact_lock(hashtextextended(scope + key, 0))` to serialize concurrent requests using the same idempotency key.
-3. Return the original transfer for an identical completed key; reject a different payload.
-4. Lock both account rows with `PESSIMISTIC_WRITE`, ordered by UUID.
-5. Validate account status, currency and available balance after locks are held.
-6. Persist transfer, mutate both account balance projections, persist one POSTED ledger transaction and its DEBIT/CREDIT entries, then persist the idempotency result.
-7. Commit all changes together. Any runtime exception rolls the transaction back.
-
-The advisory lock is PostgreSQL-specific and intentionally chosen because it serializes same-key requests before the idempotency row exists. The unique `(operation_scope, idempotency_key)` constraint remains the durable final guard. Hash collisions can only cause unnecessary serialization, not incorrect execution.
-
-## Accounting convention in this simulation
-
-For a customer-to-customer transfer, the source account receives a DEBIT entry and the destination receives a CREDIT entry. The existing `JournalValidator` enforces positive entries, a single currency and equal debit/credit totals. The journal and account balance changes share the same database transaction.
-
-## Important limitations / next work
-
-- This is an educational simulation, not a production banking ledger. Production systems should make the ledger authoritative and derive balances from posted entries or a rigorously reconciled projection.
-- This phase persists successful idempotency outcomes only; rejected attempts are not retained. Add an independent audit/security policy before production.
-- Idempotency scope is currently the fixed operation `TRANSFER_CREATE`; after authentication is implemented, scope it by authenticated client/customer identity.
-- The API currently has no caller authorization; do not expose it to untrusted networks.
-- `NUMERIC(19,4)` is retained from V1. A production currency/scale policy must be explicit per currency.
-- The reference number is unique but intentionally opaque/non-sequential.
-- No Kafka publication is performed here. Phase 3 should write an outbox event in this same transaction before any asynchronous publishing.
-
-## Verification
+Start PostgreSQL and run the application:
 
 ```powershell
+docker compose up -d postgres
 mvn clean test
 mvn spring-boot:run
 ```
 
-PostgreSQL 17 must be running. Flyway applies V2 automatically; V1 is not modified.
+Create two ACTIVE MYR accounts through the Phase 1 API. New accounts deliberately start at zero. For local integration testing only, fund the source account using a disposable database fixture:
+
+```sql
+UPDATE accounts
+SET balance = 1000.0000, updated_at = CURRENT_TIMESTAMP
+WHERE id = '<source-account-uuid>' AND status = 'ACTIVE';
+```
+
+Do not use direct balance updates as a production funding mechanism. This SQL is only a test fixture because the project does not implement deposits in this phase.
+
+## 2.5 Scenario A — Successful transfer
+
+1. Submit `POST /api/v1/transfers` with a unique `Idempotency-Key`, valid source/destination account UUIDs, amount `125.5000`, currency `MYR` and a description.
+2. Expected: HTTP `201 Created`; response identifies the transfer and its amount, currency and status.
+3. Retrieve the transfer by ID.
+4. Expected: HTTP `200 OK`; persisted transfer matches the create response.
+5. Retrieve it by reference.
+6. Expected: HTTP `200 OK`; same transfer is returned.
+7. Retrieve transfer history for both accounts.
+8. Expected: the source and destination histories include the transfer according to direction.
+
+For a source starting at MYR 1,000.0000 and destination at MYR 0.0000, the expected post-transfer projections are MYR 874.5000 and MYR 125.5000.
+
+## 2.6 Scenario B — Idempotency
+
+1. Repeat the exact same request with the same `Idempotency-Key` and identical payload.
+2. Expected: HTTP `201 Created` and the original transfer result; no second transfer or journal is created.
+3. Reuse the same key with a different amount, account or currency.
+4. Expected: HTTP `409 Conflict` with the idempotency conflict error code implemented by the service.
+5. Send a request without `Idempotency-Key`.
+6. Expected: request rejected as a client error; no transfer, balance mutation or ledger journal is created.
+7. In an integration/concurrency test, submit concurrent identical requests with the same key and payload.
+8. Expected: one logical transfer and one journal; all successful callers observe the same transfer result.
+
+## 2.7 Scenario C — Business rejection and validation
+
+Test insufficient funds, same source/destination account, inactive account, currency mismatch, zero/negative amount, excessive precision and unknown account IDs.
+
+Expected behavior:
+
+- Insufficient funds: HTTP `422 Unprocessable Entity`.
+- Invalid request fields: HTTP `400 Bad Request`.
+- Unknown account: HTTP `404 Not Found`.
+- Conflicting idempotency payload: HTTP `409 Conflict`.
+
+For rejected business requests, verify no partial balance change, transfer, ledger posting or successful idempotency result is committed.
+
+## 2.8 Database verification
+
+Check account balances:
+
+```sql
+SELECT id, account_number, balance, currency, status
+FROM accounts
+WHERE id IN ('<source-account-uuid>', '<destination-account-uuid>');
+```
+
+Inspect the transfer and journal entries:
+
+```sql
+SELECT t.id AS transfer_id, t.reference, t.source_account_id,
+       t.destination_account_id, t.amount, t.currency, t.status,
+       lt.id AS journal_id, lt.transaction_type, lt.status AS journal_status,
+       le.account_id, le.entry_type, le.amount AS entry_amount, le.currency AS entry_currency
+FROM transfers t
+JOIN ledger_transactions lt ON lt.transfer_id = t.id
+JOIN ledger_entries le ON le.ledger_transaction_id = lt.id
+WHERE t.id = '<transfer-uuid>'
+ORDER BY le.entry_type;
+```
+
+Find unbalanced journals:
+
+```sql
+SELECT lt.id AS journal_id,
+       SUM(CASE WHEN le.entry_type = 'DEBIT' THEN le.amount ELSE 0 END) AS total_debits,
+       SUM(CASE WHEN le.entry_type = 'CREDIT' THEN le.amount ELSE 0 END) AS total_credits
+FROM ledger_transactions lt
+JOIN ledger_entries le ON le.ledger_transaction_id = lt.id
+GROUP BY lt.id
+HAVING SUM(CASE WHEN le.entry_type = 'DEBIT' THEN le.amount ELSE 0 END)
+    <> SUM(CASE WHEN le.entry_type = 'CREDIT' THEN le.amount ELSE 0 END);
+```
+
+Expected: no rows for balanced journals.
+
+Inspect idempotency records using the actual table and column names in the V2 migration:
+
+```sql
+SELECT *
+FROM idempotency_records
+ORDER BY created_at DESC
+LIMIT 20;
+```
+
+If the schema names differ in the checked-out migration, use the V2-defined names; do not create a replacement table to make the query work.
+
+## 2.9 Regression verification
+
+```powershell
+mvn clean test
+```
+
+Run the Phase 1 Postman collection again. Customer/account creation and balance retrieval must remain unchanged.
+
+## 2.10 Pass condition
+
+A successful transfer changes both account projections and creates one balanced journal atomically. Replays with an identical key/payload do not duplicate financial effects; conflicting payloads and invalid/business-rejected requests do not partially mutate financial state.

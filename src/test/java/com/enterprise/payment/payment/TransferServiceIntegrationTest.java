@@ -76,7 +76,9 @@ class TransferServiceIntegrationTest {
     ledgerTransactions.deleteAll();
     transfers.deleteAll();
     accounts.deleteAll();
-    customers.deleteAll();
+    // Do not delete all customers: V6 seeds OPERATIONS/ADMIN users whose
+    // users.customer_id foreign keys intentionally reference their customers.
+    // Each test creates a unique customer, so old test customers can safely remain.
     CustomerEntity customer =
         customers.save(
             new CustomerEntity(

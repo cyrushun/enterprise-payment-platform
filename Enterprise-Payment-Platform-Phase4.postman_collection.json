@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Enterprise Payment Platform - Phase 4 API Tests",
-    "description": "Phase 4 API acceptance collection. Run sequentially. Authentication flows use CUSTOMER token; privileged requests require operationsToken. Negative cases assert stable ApiError codes. Dependency-outage scenarios are documented in docs/verification/phase-4-complete-testing-guide.md and must be executed only in a disposable local environment.",
+    "description": "Phase 4 API acceptance collection. Run sequentially. Authentication flows use CUSTOMER token; privileged requests require operationsToken. Negative cases assert stable ApiError codes. Dependency-outage scenarios are documented in docs/verification/phase-4-complete-testing-guide.md and must be executed only in a disposable local environment.\n\nRole test order: Login as OPERATIONS and Login as ADMIN in the Privileged role authentication folder. Tokens are stored separately as operationsToken and adminToken. The reconciliation discrepancies request is a root-level request immediately after the Role authorization folder.\n\nFeature-oriented folders: Authentication and JWT; Privileged role authentication; Role authorization (privileged token optional); Reconciliation; Redis rate limiting. Reconciliation endpoints are grouped in Reconciliation rather than the generic role-authorization folder.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -71,6 +71,30 @@
     },
     {
       "key": "adminToken",
+      "value": ""
+    },
+    {
+      "key": "operationsEmail",
+      "value": "operations@test.local"
+    },
+    {
+      "key": "operationsPassword",
+      "value": "OperationsTest123!"
+    },
+    {
+      "key": "operationsRefreshToken",
+      "value": ""
+    },
+    {
+      "key": "adminEmail",
+      "value": "admin@test.local"
+    },
+    {
+      "key": "adminPassword",
+      "value": "AdminTest123!"
+    },
+    {
+      "key": "adminRefreshToken",
       "value": ""
     }
   ],
@@ -450,6 +474,110 @@
       ]
     },
     {
+      "name": "Privileged role authentication",
+      "description": "Use the local V6 seeded test users. Login separately for OPERATIONS and ADMIN; each request stores its access token in a role-specific collection variable.",
+      "item": [
+        {
+          "name": "Login as OPERATIONS",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{operationsEmail}}\",\n  \"password\": \"{{operationsPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Authenticate the seeded OPERATIONS user. The access token is saved to {{operationsToken}}; do not copy it into the CUSTOMER accessToken variable."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+                  "const b=pm.response.json();",
+                  "pm.test('Access and refresh tokens returned',()=>{pm.expect(b.accessToken).to.be.a('string').and.not.empty;pm.expect(b.refreshToken).to.be.a('string').and.not.empty;});",
+                  "pm.collectionVariables.set('operationsToken',b.accessToken);",
+                  "pm.collectionVariables.set('operationsRefreshToken',b.refreshToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login as ADMIN",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Authenticate the seeded ADMIN user. The access token is saved to {{adminToken}}; do not copy it into the CUSTOMER accessToken variable."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+                  "const b=pm.response.json();",
+                  "pm.test('Access and refresh tokens returned',()=>{pm.expect(b.accessToken).to.be.a('string').and.not.empty;pm.expect(b.refreshToken).to.be.a('string').and.not.empty;});",
+                  "pm.collectionVariables.set('adminToken',b.accessToken);",
+                  "pm.collectionVariables.set('adminRefreshToken',b.refreshToken);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "Role authorization (privileged token optional)",
       "item": [
         {
@@ -504,10 +632,9 @@
           ]
         },
         {
-          "name": "10 - OPERATIONS or ADMIN list outbox",
+          "name": "10A - OPERATIONS list outbox",
           "request": {
             "method": "GET",
-            "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/outbox/events?page=0&size=20",
               "host": [
@@ -536,7 +663,7 @@
               "bearer": [
                 {
                   "key": "token",
-                  "value": "{{accessToken}}",
+                  "value": "{{operationsToken}}",
                   "type": "string"
                 }
               ]
@@ -558,10 +685,62 @@
           ]
         },
         {
+          "name": "10B - ADMIN list outbox",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/outbox/events?page=0&size=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "outbox",
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Run ADMIN login first. Confirms that ADMIN can independently access the privileged outbox listing.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('ADMIN gets 200',()=>pm.response.to.have.status(200));",
+                  "const b=pm.response.json();pm.expect(b.content).to.be.an('array');",
+                  "if(b.content.length)pm.collectionVariables.set('outboxEventId',b.content[0].id);",
+                  "const dead=b.content.find(e=>e.status==='DEAD'); const nonDead=b.content.find(e=>e.status!=='DEAD'); if(dead)pm.collectionVariables.set('deadOutboxEventId',dead.id); if(nonDead)pm.collectionVariables.set('nonDeadOutboxEventId',nonDead.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "11 - Get outbox event",
           "request": {
             "method": "GET",
-            "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/outbox/events/{{outboxEventId}}",
               "host": [
@@ -581,7 +760,7 @@
               "bearer": [
                 {
                   "key": "token",
-                  "value": "{{accessToken}}",
+                  "value": "{{operationsToken}}",
                   "type": "string"
                 }
               ]
@@ -628,80 +807,6 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"Expected response status\", function () { pm.expect(pm.response.code).to.be.oneOf([200, 201, 204]); });"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "13 - Reconciliation runs list (OPERATIONS/ADMIN)",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{operationsToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/reconciliation/runs",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "reconciliation",
-                "runs"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"HTTP 200\",()=>pm.response.to.have.status(200));",
-                  "pm.test(\"Run list is an array\",()=>pm.expect(pm.response.json()).to.be.an(\"array\"));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "14 - Run reconciliation now (OPERATIONS/ADMIN)",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{operationsToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/reconciliation/run",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "reconciliation",
-                "run"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"HTTP 200 after synchronous scan\",()=>pm.response.to.have.status(200));",
-                  "const b=pm.response.json();",
-                  "pm.test(\"Run result is complete\",()=>{pm.expect(b.runId).to.be.a(\"string\");pm.expect(b.status).to.eql(\"COMPLETED\");pm.expect(b.accountsChecked).to.be.a(\"number\");pm.expect(b.discrepanciesFound).to.be.a(\"number\");});",
-                  "pm.collectionVariables.set(\"reconciliationRunId\",b.runId);"
                 ]
               }
             }
@@ -791,82 +896,6 @@
                   "pm.test(\"Kafka replay succeeds\",()=>pm.response.to.have.status(200));",
                   "const b=pm.response.json();",
                   "pm.test(\"Broker acknowledgement metadata exists\",()=>{pm.expect(b.accepted).to.eql(true);pm.expect(b.topic).to.be.a(\"string\");pm.expect(b.partition).to.be.a(\"number\");pm.expect(b.offset).to.be.a(\"number\");});"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "17 - CUSTOMER forbidden from reconciliation runs",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/reconciliation/runs",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "reconciliation",
-                "runs"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"HTTP 403\",()=>pm.response.to.have.status(403));",
-                  "const b=pm.response.json(); pm.test(\"Error code FORBIDDEN\",()=>pm.expect(b.code).to.eql(\"FORBIDDEN\"));",
-                  "pm.test(\"ApiError shape\",()=>{pm.expect(b.message).to.be.a(\"string\");pm.expect(b.timestamp).to.exist;pm.expect(b.details).to.be.an(\"array\");});"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "18 - Malformed reconciliation run UUID",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{operationsToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/reconciliation/runs/not-a-uuid/discrepancies",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "reconciliation",
-                "runs",
-                "not-a-uuid",
-                "discrepancies"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"HTTP 400\",()=>pm.response.to.have.status(400));",
-                  "const b=pm.response.json(); pm.test(\"Error code MALFORMED_REQUEST\",()=>pm.expect(b.code).to.eql(\"MALFORMED_REQUEST\"));",
-                  "pm.test(\"ApiError shape\",()=>{pm.expect(b.message).to.be.a(\"string\");pm.expect(b.timestamp).to.exist;pm.expect(b.details).to.be.an(\"array\");});"
                 ]
               }
             }
@@ -1089,48 +1118,302 @@
             }
           ]
         }
+      ],
+      "description": "Run CUSTOMER denial requests with accessToken. Run privileged requests after Login as OPERATIONS (operationsToken) or Login as ADMIN (adminToken). Requests 10A and 10B independently verify both privileged roles."
+    },
+    {
+      "name": "Reconciliation",
+      "description": "Reconciliation run, discrepancy retrieval and authorization scenarios. Execute the run before retrieving its discrepancies.",
+      "item": [
+        {
+          "name": "13 - Reconciliation runs list (OPERATIONS/ADMIN)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{operationsToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/reconciliation/runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "reconciliation",
+                "runs"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\",()=>pm.response.to.have.status(200));",
+                  "pm.test(\"Run list is an array\",()=>pm.expect(pm.response.json()).to.be.an(\"array\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "14 - Run reconciliation now (OPERATIONS/ADMIN)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{operationsToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/reconciliation/run",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "reconciliation",
+                "run"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200 after synchronous scan\",()=>pm.response.to.have.status(200));",
+                  "const b=pm.response.json();",
+                  "pm.test(\"Run result is complete\",()=>{pm.expect(b.runId).to.be.a(\"string\");pm.expect(b.status).to.eql(\"COMPLETED\");pm.expect(b.accountsChecked).to.be.a(\"number\");pm.expect(b.discrepanciesFound).to.be.a(\"number\");});",
+                  "pm.collectionVariables.set(\"reconciliationRunId\",b.runId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "15 - Reconciliation run discrepancies (OPERATIONS/ADMIN)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{operationsToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/reconciliation/runs/{{reconciliationRunId}}/discrepancies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "reconciliation",
+                "runs",
+                "{{reconciliationRunId}}",
+                "discrepancies"
+              ]
+            },
+            "description": "Run 14 - Run reconciliation now first to populate reconciliationRunId. Uses the OPERATIONS token by default; replace with {{adminToken}} to verify ADMIN access."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+                  "const b=pm.response.json();",
+                  "pm.test('Discrepancy response is an array',()=>pm.expect(b).to.be.an('array'));",
+                  "pm.test('Each discrepancy has expected fields',()=>b.forEach(d=>{pm.expect(d).to.have.property('id');pm.expect(d).to.have.property('runId');pm.expect(d).to.have.property('discrepancyType');pm.expect(d).to.have.property('resourceType');}));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "17 - CUSTOMER forbidden from reconciliation runs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/reconciliation/runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "reconciliation",
+                "runs"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 403\",()=>pm.response.to.have.status(403));",
+                  "const b=pm.response.json(); pm.test(\"Error code FORBIDDEN\",()=>pm.expect(b.code).to.eql(\"FORBIDDEN\"));",
+                  "pm.test(\"ApiError shape\",()=>{pm.expect(b.message).to.be.a(\"string\");pm.expect(b.timestamp).to.exist;pm.expect(b.details).to.be.an(\"array\");});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "18 - Malformed reconciliation run UUID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{operationsToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/reconciliation/runs/not-a-uuid/discrepancies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "reconciliation",
+                "runs",
+                "not-a-uuid",
+                "discrepancies"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 400\",()=>pm.response.to.have.status(400));",
+                  "const b=pm.response.json(); pm.test(\"Error code MALFORMED_REQUEST\",()=>pm.expect(b.code).to.eql(\"MALFORMED_REQUEST\"));",
+                  "pm.test(\"ApiError shape\",()=>{pm.expect(b.message).to.be.a(\"string\");pm.expect(b.timestamp).to.exist;pm.expect(b.details).to.be.an(\"array\");});"
+                ]
+              }
+            }
+          ]
+        }
       ]
     },
     {
-      "name": "15 - Reconciliation run discrepancies (OPERATIONS/ADMIN)",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{operationsToken}}"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/api/v1/reconciliation/runs/{{reconciliationRunId}}/discrepancies",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "v1",
-            "reconciliation",
-            "runs",
-            "{{reconciliationRunId}}",
-            "discrepancies"
+      "name": "Redis rate limiting",
+      "description": "Redis-backed API rate-limit scenarios. Run the login probe six times from the same client IP within one minute; run the general API probe repeatedly using the CUSTOMER access token.",
+      "item": [
+        {
+          "name": "16 - Login rate-limit probe (repeat 6 times)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Send six times from the same client IP within one minute. First five should reach login (401 with invalid password); sixth should return 429.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"intentionally-wrong-password\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if(pm.response.code===429){pm.test('429 rate limit',()=>{pm.expect(pm.response.json().code).to.eql('RATE_LIMIT_EXCEEDED');pm.expect(pm.response.headers.has('Retry-After')).to.eql(true);});}else{pm.test('Within login limit',()=>pm.expect(pm.response.code).to.eql(401));}",
+                  "pm.test('Rate limit headers',()=>{pm.expect(pm.response.headers.has('X-RateLimit-Limit')).to.eql(true);pm.expect(pm.response.headers.has('X-RateLimit-Remaining')).to.eql(true);});"
+                ]
+              }
+            }
           ]
         },
-        "description": "Run request 14 first to populate reconciliationRunId. Requires OPERATIONS or ADMIN access."
-      },
-      "event": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
-              "const b=pm.response.json();",
-              "pm.test('Discrepancy response is an array',()=>pm.expect(b).to.be.an('array'));",
-              "pm.test('Each discrepancy has expected fields',()=>b.forEach(d=>{pm.expect(d).to.have.property('id');pm.expect(d).to.have.property('runId');pm.expect(d).to.have.property('discrepancyType');pm.expect(d).to.have.property('resourceType');}));"
-            ]
-          }
+          "name": "17 - General API rate-limit probe",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "me"
+              ]
+            },
+            "description": "Repeat more than the configured general API limit (default 100/minute) using the same authenticated customer.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Expected success or rate-limit response',()=>pm.expect(pm.response.code).to.be.oneOf([200,429]));",
+                  "if(pm.response.code===429)pm.test('429 error contract',()=>pm.expect(pm.response.json().code).to.eql('RATE_LIMIT_EXCEEDED'));",
+                  "pm.test('Rate limit header present',()=>pm.expect(pm.response.headers.has('X-RateLimit-Limit')).to.eql(true));"
+                ]
+              }
+            }
+          ]
         }
       ]
     }
-  ]
+  ],
+  "description": " Use docs/verification/phase-4-complete-testing-guide.md as the single executable verification runbook for Phase 4.1–4.7; phase-4-verification.md was removed as redundant."
 }
