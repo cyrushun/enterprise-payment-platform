@@ -1,0 +1,87 @@
+name: Deploy Production
+on:
+  workflow_dispatch:
+    inputs:
+      image_digest:
+        description: "Immutable image digest from staging (sha256:<64-character-digest>)"
+        required: true
+        type: string
+      commit_sha:
+        description: "Full 40-character source commit SHA for this staged image"
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 25
+    steps:
+      - name: Validate immutable image digest
+        id: image
+        env:
+          IMAGE_DIGEST: ${{ inputs.image_digest }}
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+          IMAGE_NAME: ghcr.io/${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "image_digest must be sha256: followed by a 64-character digest." >&2
+            exit 1
+          fi
+          if [[ ! "$COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "commit_sha must be the full 40-character source commit SHA." >&2
+            exit 1
+          fi
+          echo "ref=${IMAGE_NAME,,}@$IMAGE_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
+      - name: Checkout deployment support files from the selected image commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.image.outputs.sha }}
+      - name: Configure SSH
+        shell: bash
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Copy Compose and deployment support files
+        env:
+          DEPLOY_HOST: ${{ vars.PRODUCTION_HOST }}
+          DEPLOY_USER: ${{ vars.PRODUCTION_USER }}
+          DEPLOY_PATH: ${{ vars.PRODUCTION_DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_HOST" && test -n "$DEPLOY_USER" && test -n "$DEPLOY_PATH"
+          REMOTE="$DEPLOY_USER@$DEPLOY_HOST"
+          ssh -o StrictHostKeyChecking=yes "$REMOTE" "mkdir -p '$DEPLOY_PATH/scripts' '$DEPLOY_PATH/observability'"
+          scp -o StrictHostKeyChecking=yes docker-compose.yml "$REMOTE:$DEPLOY_PATH/"
+          scp -o StrictHostKeyChecking=yes -r observability "$REMOTE:$DEPLOY_PATH/"
+          scp -o StrictHostKeyChecking=yes scripts/prepare-linux-deployment.sh scripts/backup-postgres-linux.sh scripts/deploy-linux-vm.sh scripts/rollback-linux-vm.sh "$REMOTE:$DEPLOY_PATH/scripts/"
+      - name: Authenticate VM to GHCR
+        env:
+          DEPLOY_HOST: ${{ vars.PRODUCTION_HOST }}
+          DEPLOY_USER: ${{ vars.PRODUCTION_USER }}
+          GHCR_PULL_USERNAME: ${{ secrets.GHCR_PULL_USERNAME }}
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_PULL_TOKEN" | ssh -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" "docker login ghcr.io -u '$GHCR_PULL_USERNAME' --password-stdin"
+      - name: Deploy approved immutable image
+        env:
+          DEPLOY_HOST: ${{ vars.PRODUCTION_HOST }}
+          DEPLOY_USER: ${{ vars.PRODUCTION_USER }}
+          DEPLOY_PATH: ${{ vars.PRODUCTION_DEPLOY_PATH }}
+          IMAGE_REF: ${{ steps.image.outputs.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" "cd '$DEPLOY_PATH' && chmod +x scripts/*.sh && ./scripts/prepare-linux-deployment.sh && PAYMENT_API_IMAGE='$IMAGE_REF' ./scripts/deploy-linux-vm.sh"

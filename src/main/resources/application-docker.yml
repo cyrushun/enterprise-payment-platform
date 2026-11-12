@@ -1,0 +1,33 @@
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: ${SHUTDOWN_PHASE_TIMEOUT:30s}
+  datasource:
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+  jpa:
+    open-in-view: false
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:redis}
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:kafka:29092}
+
+server:
+  shutdown: graceful
+
+management:
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:0.1}
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://jaeger:4318/v1/traces}
+
+app:
+  security:
+    jwt:
+      public-key-location: ${JWT_PUBLIC_KEY_LOCATION:file:/run/secrets/jwt-public.pem}
+      private-key-location: ${JWT_PRIVATE_KEY_LOCATION:file:/run/secrets/jwt-private.pem}

@@ -1,0 +1,209 @@
+spring:
+  application:
+    name: enterprise-payment-platform
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/payment_platform}
+    username: ${SPRING_DATASOURCE_USERNAME:payment_app}
+    password: ${SPRING_DATASOURCE_PASSWORD:local_dev_password_change_me}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      connection-timeout: ${DB_CONNECTION_TIMEOUT_MS:5000}
+      validation-timeout: 3000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:2s}
+      timeout: ${REDIS_COMMAND_TIMEOUT:2s}
+
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      acks: all
+      retries: 5
+      properties:
+        enable.idempotence: true
+        delivery.timeout.ms: 30000
+        request.timeout.ms: 10000
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      group-id: payment-notification-service
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      properties:
+        max.poll.interval.ms: 300000
+        session.timeout.ms: 15000
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    template:
+      observation-enabled: true
+    listener:
+      observation-enabled: true
+
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+
+management:
+  observations:
+    key-values:
+      application: ${spring.application.name}
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+        payment.transfers.duration: true
+        payment.outbox.publish.duration: true
+        payment.kafka.consumer.processing: true
+        payment.rate_limit.store.duration: true
+      percentiles:
+        http.server.requests: 0.5,0.95,0.99
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when_authorized
+      group:
+        readiness:
+          include:
+            - readinessState
+            - db
+        liveness:
+          include: livenessState
+
+logging:
+  structured:
+    format:
+      console: logstash
+    json:
+      add:
+        application: ${spring.application.name}
+  level:
+    root: INFO
+    com.enterprise.payment: INFO
+
+app:
+  kafka:
+    transfer-topic: payment.transfer-events
+    listener-concurrency: ${KAFKA_LISTENER_CONCURRENCY:1}
+    transfer-dlt-topic: payment.transfer-events.DLT
+    dlt-replay-timeout-seconds: ${KAFKA_DLT_REPLAY_TIMEOUT_SECONDS:10}
+  reconciliation:
+    enabled: ${RECONCILIATION_ENABLED:true}
+    cron: ${RECONCILIATION_CRON:0 15 2 * * *}
+  outbox:
+    enabled: ${OUTBOX_ENABLED:true}
+    send-timeout-seconds: ${OUTBOX_SEND_TIMEOUT_SECONDS:10}
+    lease-duration-seconds: ${OUTBOX_LEASE_DURATION_SECONDS:300}
+    poll-interval-ms: ${OUTBOX_POLL_INTERVAL_MS:1000}
+    batch-size: ${OUTBOX_BATCH_SIZE:25}
+    max-attempts: ${OUTBOX_MAX_ATTEMPTS:8}
+  rate-limit:
+    enabled: ${RATE_LIMIT_ENABLED:true}
+    # Fail open preserves API availability during Redis outages; security monitoring must alert on degraded mode.
+    fail-open: ${RATE_LIMIT_FAIL_OPEN:true}
+    # Enable only when the application is behind a trusted proxy that overwrites X-Forwarded-For.
+    trust-forwarded-headers: ${RATE_LIMIT_TRUST_FORWARDED_HEADERS:false}
+    login:
+      limit: ${RATE_LIMIT_LOGIN_LIMIT:5}
+      window: ${RATE_LIMIT_LOGIN_WINDOW:1m}
+    registration:
+      limit: ${RATE_LIMIT_REGISTER_LIMIT:5}
+      window: ${RATE_LIMIT_REGISTER_WINDOW:1h}
+    transfer:
+      limit: ${RATE_LIMIT_TRANSFER_LIMIT:10}
+      window: ${RATE_LIMIT_TRANSFER_WINDOW:1m}
+    general:
+      limit: ${RATE_LIMIT_GENERAL_LIMIT:100}
+      window: ${RATE_LIMIT_GENERAL_WINDOW:1m}
+  observability:
+    metrics:
+      username: ${METRICS_USERNAME:metrics123}
+      password: ${METRICS_PASSWORD:change-this-metrics-password}
+  security:
+    jwt:
+      issuer: enterprise-payment-platform
+      audience: payment-api
+      access-token-ttl-seconds: 900
+      refresh-token-ttl-seconds: 604800
+      public-key-location: ${JWT_PUBLIC_KEY_LOCATION:classpath:keys/jwt-public.pem}
+      private-key-location: ${JWT_PRIVATE_KEY_LOCATION:classpath:keys/jwt-private.pem}
+
+---
+spring:
+  config:
+    activate:
+      on-profile: test
+  datasource:
+    url: jdbc:tc:postgresql:17-alpine:///payment_platform
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+
+  kafka:
+    listener:
+      auto-startup: false
+app:
+  outbox:
+    enabled: false
+  rate-limit:
+    enabled: ${RATE_LIMIT_ENABLED:true}
+    # Fail open preserves API availability during Redis outages; security monitoring must alert on degraded mode.
+    fail-open: ${RATE_LIMIT_FAIL_OPEN:true}
+    # Enable only when the application is behind a trusted proxy that overwrites X-Forwarded-For.
+    trust-forwarded-headers: ${RATE_LIMIT_TRUST_FORWARDED_HEADERS:false}
+    login:
+      limit: ${RATE_LIMIT_LOGIN_LIMIT:5}
+      window: ${RATE_LIMIT_LOGIN_WINDOW:1m}
+    registration:
+      limit: ${RATE_LIMIT_REGISTER_LIMIT:5}
+      window: ${RATE_LIMIT_REGISTER_WINDOW:1h}
+    transfer:
+      limit: ${RATE_LIMIT_TRANSFER_LIMIT:10}
+      window: ${RATE_LIMIT_TRANSFER_WINDOW:1m}
+    general:
+      limit: ${RATE_LIMIT_GENERAL_LIMIT:100}
+      window: ${RATE_LIMIT_GENERAL_WINDOW:1m}
+  security:
+    jwt:
+      public-key-location: classpath:keys/jwt-public.pem
+      private-key-location: classpath:keys/jwt-private.pem
+  reconciliation:
+    enabled: false

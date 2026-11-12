@@ -1,0 +1,147 @@
+name: Publish Image
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+permissions:
+  contents: read
+  packages: write
+jobs:
+  publish:
+    outputs:
+      image_ref: ${{ steps.image_ref.outputs.ref }}
+      image_digest: ${{ steps.build.outputs.digest }}
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      (github.event.workflow_run.head_branch == 'main' ||
+       startsWith(github.event.workflow_run.head_branch, 'v'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Checkout tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Normalize image name
+        id: image
+        shell: bash
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Generate image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: |
+            type=sha,prefix=sha-,format=long
+            type=raw,value=latest,enable=${{ github.event.workflow_run.head_branch == 'main' }}
+            type=raw,value=${{ github.event.workflow_run.head_branch }},enable=${{ startsWith(github.event.workflow_run.head_branch, 'v') }}
+      - name: Build and publish multi-platform image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: mode=max
+          sbom: true
+      - name: Record immutable image digest reference
+        id: image_ref
+        shell: bash
+        env:
+          IMAGE_NAME: ${{ steps.image.outputs.name }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: echo "ref=${IMAGE_NAME}@${IMAGE_DIGEST}" >> "$GITHUB_OUTPUT"
+      - name: Scan published image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.image_ref.outputs.ref }}
+          format: table
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Write release reference to workflow summary
+        env:
+          IMAGE_REF: ${{ steps.image_ref.outputs.ref }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          SOURCE_COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          {
+            echo "## Verified container image"
+            echo "- Source commit: \`$SOURCE_COMMIT\`"
+            echo "- Immutable image digest: \`$IMAGE_DIGEST\`"
+            echo "- Deployment reference: \`$IMAGE_REF\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-staging:
+    name: Deploy staging VM
+    needs: publish
+    if: github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-24.04
+    environment: staging
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout deployment files from tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Configure SSH
+        shell: bash
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.STAGING_SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Copy Compose and deployment support files
+        env:
+          DEPLOY_HOST: ${{ vars.STAGING_HOST }}
+          DEPLOY_USER: ${{ vars.STAGING_USER }}
+          DEPLOY_PATH: ${{ vars.STAGING_DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_HOST" && test -n "$DEPLOY_USER" && test -n "$DEPLOY_PATH"
+          REMOTE="$DEPLOY_USER@$DEPLOY_HOST"
+          ssh -o StrictHostKeyChecking=yes "$REMOTE" "mkdir -p '$DEPLOY_PATH/scripts' '$DEPLOY_PATH/observability'"
+          scp -o StrictHostKeyChecking=yes docker-compose.yml "$REMOTE:$DEPLOY_PATH/"
+          scp -o StrictHostKeyChecking=yes -r observability "$REMOTE:$DEPLOY_PATH/"
+          scp -o StrictHostKeyChecking=yes scripts/prepare-linux-deployment.sh scripts/backup-postgres-linux.sh scripts/deploy-linux-vm.sh scripts/rollback-linux-vm.sh "$REMOTE:$DEPLOY_PATH/scripts/"
+      - name: Authenticate VM to GHCR
+        env:
+          DEPLOY_HOST: ${{ vars.STAGING_HOST }}
+          DEPLOY_USER: ${{ vars.STAGING_USER }}
+          GHCR_PULL_USERNAME: ${{ secrets.GHCR_PULL_USERNAME }}
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_PULL_TOKEN" | ssh -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" "docker login ghcr.io -u '$GHCR_PULL_USERNAME' --password-stdin"
+      - name: Prepare and deploy immutable image
+        env:
+          DEPLOY_HOST: ${{ vars.STAGING_HOST }}
+          DEPLOY_USER: ${{ vars.STAGING_USER }}
+          DEPLOY_PATH: ${{ vars.STAGING_DEPLOY_PATH }}
+          IMAGE_REF: ${{ needs.publish.outputs.image_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" "cd '$DEPLOY_PATH' && chmod +x scripts/*.sh && ./scripts/prepare-linux-deployment.sh && PAYMENT_API_IMAGE='$IMAGE_REF' ./scripts/deploy-linux-vm.sh"

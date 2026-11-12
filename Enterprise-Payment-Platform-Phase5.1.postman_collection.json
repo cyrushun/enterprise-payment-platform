@@ -1,0 +1,117 @@
+{
+  "info": {
+    "_postman_id": "8f3d8b45-4c55-4c57-9c61-5c51f5a15151",
+    "name": "Enterprise Payment Platform - Phase 5.1 Observability",
+    "description": "Verify protected Prometheus metrics, Actuator health and correlation ID behavior. Requires Phase 4 access token for the authenticated API request.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Prometheus metrics - without credentials (expect 401)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/actuator/prometheus"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Metrics endpoint requires authentication', function () { pm.response.to.have.status(401); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Prometheus metrics - authenticated",
+      "request": {
+        "auth": {
+          "type": "basic",
+          "basic": [
+            {
+              "key": "username",
+              "value": "{{metricsUsername}}",
+              "type": "string"
+            },
+            {
+              "key": "password",
+              "value": "{{metricsPassword}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/actuator/prometheus"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Metrics endpoint returns 200', function () { pm.response.to.have.status(200); });",
+              "pm.test('Prometheus exposition is returned', function () { pm.expect(pm.response.text()).to.include('# HELP'); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Actuator health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/actuator/health"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Health endpoint returns 200', function () { pm.response.to.have.status(200); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Correlation ID echo (authenticated API example)",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{accessToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-Correlation-ID",
+            "value": "phase51-postman-001"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/accounts"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Correlation ID is echoed', function () { pm.expect(pm.response.headers.get('X-Correlation-ID')).to.eql('phase51-postman-001'); });"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
