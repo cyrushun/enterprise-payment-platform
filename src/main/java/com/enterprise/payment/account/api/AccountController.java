@@ -3,6 +3,7 @@ package com.enterprise.payment.account.api;
 import com.enterprise.payment.account.application.AccountService;
 import jakarta.validation.Valid;
 import java.net.URI;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -20,6 +21,30 @@ public class AccountController {
       AccountService service, com.enterprise.payment.security.OwnershipService ownership) {
     this.service = service;
     this.ownership = ownership;
+  }
+
+  @GetMapping
+  public List<AccountResponse> list(
+      @RequestParam(required = false) UUID customerId, Authentication auth) {
+    if (auth == null || !auth.isAuthenticated())
+      throw new AccessDeniedException("Authentication is required");
+    if (!(auth instanceof JwtAuthenticationToken jwt)) {
+      throw new AccessDeniedException("A verified JWT identity is required");
+    }
+    UUID scopedCustomerId;
+    if (hasPrivilegedRole(auth)) {
+      if (customerId == null)
+        throw new IllegalArgumentException("customerId is required for operations users");
+      scopedCustomerId = customerId;
+    } else if (auth.getAuthorities().stream()
+        .anyMatch(a -> a.getAuthority().equals("ROLE_CUSTOMER"))) {
+      String claim = jwt.getToken().getClaimAsString("customer_id");
+      if (claim == null) throw new AccessDeniedException("Customer identity is missing");
+      scopedCustomerId = UUID.fromString(claim);
+    } else {
+      throw new AccessDeniedException("Account listing is not permitted for this role");
+    }
+    return service.listForCustomer(scopedCustomerId);
   }
 
   @PostMapping

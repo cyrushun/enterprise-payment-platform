@@ -73,10 +73,35 @@ jobs:
             src/main/resources/keys/jwt-private.pem
             src/test/resources/keys/jwt-private.pem
           format: table
+  frontend-verify:
+    name: Frontend typecheck, lint, tests and production build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: TypeScript check
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Unit tests
+        run: npm test
+      - name: Production build
+        run: npm run build
+
   container-build:
     name: Docker image build
     runs-on: ubuntu-24.04
-    needs: [verify, security]
+    needs: [verify, security, frontend-verify]
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -92,10 +117,19 @@ jobs:
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Build frontend runtime image (no publish)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          platforms: linux/amd64
+          push: false
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max
 
   ci-gate:
     name: CI gate
     runs-on: ubuntu-24.04
-    needs: [verify, security, container-build]
+    needs: [verify, security, frontend-verify, container-build]
     steps:
       - run: echo "Maven verification and security checks passed."

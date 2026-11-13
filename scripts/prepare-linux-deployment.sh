@@ -19,9 +19,13 @@ POSTGRES_USER="$(env_value POSTGRES_USER)"
 POSTGRES_PASSWORD="$(env_value POSTGRES_PASSWORD)"
 METRICS_USERNAME="$(env_value METRICS_USERNAME)"
 METRICS_PASSWORD="$(env_value METRICS_PASSWORD)"
-for required in POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD METRICS_USERNAME METRICS_PASSWORD; do
+FRONTEND_SESSION_SECRET="$(env_value FRONTEND_SESSION_SECRET)"
+for required in POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD METRICS_USERNAME METRICS_PASSWORD FRONTEND_SESSION_SECRET; do
   if [[ -z "${!required}" ]]; then echo "ERROR: ${required} is empty in .env." >&2; exit 1; fi
 done
+if [[ ${#FRONTEND_SESSION_SECRET} -lt 32 || "$FRONTEND_SESSION_SECRET" == CHANGE_ME* ]]; then
+  echo "ERROR: FRONTEND_SESSION_SECRET must be a unique secret of at least 32 characters." >&2; exit 1;
+fi
 PROMETHEUS_TARGET="$(env_value PROMETHEUS_TARGET || printf payment-api:8080)"
 [[ "$PROMETHEUS_TARGET" =~ ^[A-Za-z0-9_.:-]+$ ]] || { echo "ERROR: invalid PROMETHEUS_TARGET." >&2; exit 1; }
 [[ "$METRICS_USERNAME" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "ERROR: invalid METRICS_USERNAME." >&2; exit 1; }
@@ -35,4 +39,5 @@ chmod 0644 .secrets/metrics-password
   echo "ERROR: matching deployment JWT key files are required in .secrets/." >&2; exit 1;
 }
 echo "Linux deployment configuration prepared; secret values were not displayed."
+echo "Frontend session secret validated (value not displayed)."
 echo "Prometheus target: ${PROMETHEUS_TARGET}"

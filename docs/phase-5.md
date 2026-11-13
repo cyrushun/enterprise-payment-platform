@@ -5,7 +5,7 @@
 - Phase 5.1 — Observability: implementation completed; user reported completion.
 - Phase 5.2 — Performance and load testing: implementation completed; user reported completion. Performance figures must come from actual k6 result artifacts, not this document.
 - Phase 5.3 — Containerization and deployment readiness: user completed verification.
-- Phase 5.4 — CI/CD and production readiness: implementation baseline included; GitHub Actions execution and Linux VM deployments are pending user-side verification.
+- Phase 5.4 — CI/CD and production readiness: user announced Phase 5 verification complete, including the Phase 5.4 verification milestone.
 
 This file is the **single source of truth for Phase 5**. Phase 5 scope, implementation, configuration, execution, verification, operational limits and rollback guidance belong here. `README.md` and other documentation should link here rather than maintaining separate Phase 5 runbooks.
 
@@ -13,7 +13,7 @@ This file is the **single source of truth for Phase 5**. Phase 5 scope, implemen
 
 Phase 5 extends the Java 21 / Spring Boot 4.0.0 payment platform with observability, repeatable performance testing, container deployment, and controlled CI/CD. PostgreSQL remains the financial system of record; Kafka is used for asynchronous event integration; Redis is used for rate limiting and ephemeral coordination. No phase introduces a distributed microservice architecture or changes the financial source of truth.
 
-Phase 5.3 establishes deployment readiness, not production certification. Phase 5.4 adds an automated delivery baseline, but a successful workflow does not certify a regulated payment system. TLS ingress, host hardening, database privilege separation, secret management, backup retention, disaster recovery, security assessment and operational SLOs still require environment-specific work.
+Phase 5.3 establishes deployment readiness, not production certification. Phase 5.4 adds an automated delivery baseline. The project owner has announced Phase 5 verification complete; this does not certify a regulated payment system. TLS ingress, host hardening, database privilege separation, secret management, backup retention, disaster recovery, security assessment and operational SLOs still require environment-specific work.
 
 ## 2. Phase 5 architecture
 
@@ -227,7 +227,7 @@ Kubernetes/Helm, multi-node HA, managed secrets, TLS termination, WAF, productio
 
 ### 6.1 Delivery architecture and status
 
-The selected deployment target is separate Linux VMs running Docker Compose. GitHub Actions builds and verifies the code, scans source/dependencies, publishes an immutable GHCR image, deploys automatically to staging after successful publication, and provides a manually approved production workflow. The user has not yet reported running these remote workflows or deploying to the Linux VMs; those checks remain pending.
+The selected deployment target is separate Linux VMs running Docker Compose. GitHub Actions builds and verifies the code, scans source/dependencies, publishes an immutable GHCR image, deploys automatically to staging after successful publication, and provides a manually approved production workflow. The project owner has announced Phase 5 verification complete. Retain the actual GitHub workflow runs, deployed image digests, staging/production deployment records and VM verification output as evidence; this summary does not replace those records.
 
 ### 6.2 Repository workflows
 
@@ -411,9 +411,9 @@ Database restoration is a separate, explicitly approved disaster-recovery operat
 | 5.1 | Metrics, tracing, structured logs, correlation and dashboards | User-reported complete | Preserve actual test/monitoring evidence |
 | 5.2 | k6 workloads, SQL/JVM diagnostics and performance report assets | User-reported complete | Preserve actual measurements and financial integrity results |
 | 5.3 | Docker/Compose deployment readiness, secrets, health checks, backup/restore scripts | User-verified complete | Keep operator's signed verification record |
-| 5.4 | GitHub Actions, security gates, GHCR, Linux VM deployment and rollback baseline | Implemented baseline; remote verification pending | CI run, image digest, staging tests, production approval/rehearsal |
+| 5.4 | GitHub Actions, security gates, GHCR, Linux VM deployment and rollback baseline | User-verified complete | Retain CI run, image digest, staging tests, production approval and rollback evidence |
 
-Phase 5 is not fully production-verified until Phase 5.4 remote CI/CD and VM checks have actual recorded evidence.
+The project owner has announced Phase 5 verification complete. Retain the actual workflow, deployment and verification artifacts for auditability. This overall completion status does not certify regulatory compliance or production suitability for real-money processing.
 
 ## 8. Historical Phase 5 troubleshooting notes
 

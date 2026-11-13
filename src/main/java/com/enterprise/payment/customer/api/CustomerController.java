@@ -25,6 +25,7 @@ public class CustomerController {
   }
 
   @GetMapping("/{customerId}")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('OPERATIONS', 'ADMIN')")
   public CustomerResponse get(@PathVariable UUID customerId) {
     return service.get(customerId);
   }

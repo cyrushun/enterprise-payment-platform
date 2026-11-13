@@ -38,7 +38,8 @@ public class AuthController {
     }
   }
 
-  public record MeResponse(UUID userId, UUID customerId, String email) {}
+  public record MeResponse(
+      UUID userId, UUID customerId, String email, java.util.List<String> roles) {}
 
   @PostMapping("/register")
   @ResponseStatus(HttpStatus.CREATED)

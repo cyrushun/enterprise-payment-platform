@@ -25,4 +25,4 @@ Do not publish arbitrary throughput claims. Define workload, data volume, machin
 
 ## Current delivery and operations baseline
 
-Phase 5.1 adds metrics, tracing and structured logs; Phase 5.2 provides repeatable load-test and diagnostic tooling; Phase 5.3 provides Docker Compose deployment readiness; Phase 5.4 provides GitHub Actions/GHCR/Linux VM delivery automation. The Phase 5.4 remote workflow and VM verification remain pending until executed in the target environments. See the [single Phase 5 guide](../phase-5.md).
+Phase 5.1 adds metrics, tracing and structured logs; Phase 5.2 provides repeatable load-test and diagnostic tooling; Phase 5.3 provides Docker Compose deployment readiness; Phase 5.4 provides GitHub Actions/GHCR/Linux VM delivery automation. The project owner has announced Phase 5 verification complete. This milestone does not imply regulatory certification or a formal production-readiness audit. See the [single Phase 5 guide](../phase-5.md).

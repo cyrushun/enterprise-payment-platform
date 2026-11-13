@@ -79,4 +79,4 @@ Authorization must be enforced server-side. A caller must never gain access to a
 
 ## Current implementation and operational maturity
 
-The project has progressed through Phases 0–5.4. Phases 0–4 are completed; Phase 5.1/5.2 are user-reported complete; Phase 5.3 deployment verification is user-verified; Phase 5.4 CI/CD and Linux VM runtime verification remain pending. This status does not change the educational-simulation boundary or imply regulatory certification. See the [single Phase 5 source of truth](../phase-5.md).
+The project has progressed through Phases 0–5.4. Phases 0–4 are completed; Phase 5 verification, including the Phase 5.4 milestone, has been announced complete by the project owner. This status does not change the educational-simulation boundary or imply regulatory certification. See the [single Phase 5 source of truth](../phase-5.md).

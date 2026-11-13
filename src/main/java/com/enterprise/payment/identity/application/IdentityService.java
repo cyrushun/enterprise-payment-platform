@@ -176,7 +176,11 @@ public class IdentityService {
     UUID id = UUID.fromString(jwt.getSubject());
     UserEntity u =
         users.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
-    return new AuthController.MeResponse(id, u.getCustomerId(), u.getEmail());
+    return new AuthController.MeResponse(
+        id,
+        u.getCustomerId(),
+        u.getEmail(),
+        jwt.getClaimAsStringList("roles") == null ? List.of() : jwt.getClaimAsStringList("roles"));
   }
 
   private static String normalize(String email) {

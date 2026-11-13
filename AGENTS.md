@@ -100,3 +100,15 @@ Each feature should separate API/application/domain/infrastructure concerns when
 - Staging and production must use separate Linux VMs, database volumes, `.env` files, JWT key pairs and credentials. Never commit `.env`, `.secrets/`, private keys, backups or deployment state.
 - Never use `docker compose down -v` as a troubleshooting shortcut; it destroys persistent volumes.
 - Application image rollback does not reverse Flyway migrations. Migrations must use backward-compatible expand/contract practices and database restore must be separately approved and rehearsed.
+
+
+## Phase 6 frontend rules
+
+- `docs/phase-6.md` is the single source of truth for Phase 6.0–6.5.
+- Frontend code lives in `frontend/`; backend remains the authority for identity, RBAC, ownership, money movement, ledger and reconciliation.
+- Preserve existing backend APIs and Flyway migrations V1–V7 unless a backward-compatible, documented API addition is explicitly required.
+- Never persist access or refresh tokens in browser localStorage/sessionStorage. Phase 6.1 must settle a secure server-side session/BFF design before authenticated screens are wired.
+- Never present placeholder dashboard values as live financial or operational data.
+- Check actual Spring controller mappings and DTOs before implementing API integration; do not rely on illustrative API examples when they differ from code.
+- Update `docs/phase-6.md`, `frontend/README.md` and root `README.md` as milestones change.
+- Report npm, browser, Docker and deployment verification only after actually executing them.

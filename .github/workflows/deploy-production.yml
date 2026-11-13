@@ -6,6 +6,10 @@ on:
         description: "Immutable image digest from staging (sha256:<64-character-digest>)"
         required: true
         type: string
+      frontend_image_digest:
+        description: "Immutable frontend image digest from staging (sha256:<64-character-digest>)"
+        required: true
+        type: string
       commit_sha:
         description: "Full 40-character source commit SHA for this staged image"
         required: true
@@ -23,6 +27,7 @@ jobs:
         env:
           IMAGE_DIGEST: ${{ inputs.image_digest }}
           COMMIT_SHA: ${{ inputs.commit_sha }}
+          FRONTEND_IMAGE_DIGEST: ${{ inputs.frontend_image_digest }}
           IMAGE_NAME: ghcr.io/${{ github.repository }}
         shell: bash
         run: |
@@ -35,7 +40,12 @@ jobs:
             echo "commit_sha must be the full 40-character source commit SHA." >&2
             exit 1
           fi
+          if [[ ! "$FRONTEND_IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "frontend_image_digest must be sha256: followed by a 64-character digest." >&2
+            exit 1
+          fi
           echo "ref=${IMAGE_NAME,,}@$IMAGE_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "frontend_ref=${IMAGE_NAME,,}@$FRONTEND_IMAGE_DIGEST" >> "$GITHUB_OUTPUT"
           echo "sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
       - name: Checkout deployment support files from the selected image commit
         uses: actions/checkout@v4
@@ -61,9 +71,9 @@ jobs:
           set -euo pipefail
           test -n "$DEPLOY_HOST" && test -n "$DEPLOY_USER" && test -n "$DEPLOY_PATH"
           REMOTE="$DEPLOY_USER@$DEPLOY_HOST"
-          ssh -o StrictHostKeyChecking=yes "$REMOTE" "mkdir -p '$DEPLOY_PATH/scripts' '$DEPLOY_PATH/observability'"
+          ssh -o StrictHostKeyChecking=yes "$REMOTE" "mkdir -p '$DEPLOY_PATH/scripts' '$DEPLOY_PATH/observability' '$DEPLOY_PATH/nginx'"
           scp -o StrictHostKeyChecking=yes docker-compose.yml "$REMOTE:$DEPLOY_PATH/"
-          scp -o StrictHostKeyChecking=yes -r observability "$REMOTE:$DEPLOY_PATH/"
+          scp -o StrictHostKeyChecking=yes -r observability nginx "$REMOTE:$DEPLOY_PATH/"
           scp -o StrictHostKeyChecking=yes scripts/prepare-linux-deployment.sh scripts/backup-postgres-linux.sh scripts/deploy-linux-vm.sh scripts/rollback-linux-vm.sh "$REMOTE:$DEPLOY_PATH/scripts/"
       - name: Authenticate VM to GHCR
         env:
@@ -81,7 +91,8 @@ jobs:
           DEPLOY_USER: ${{ vars.PRODUCTION_USER }}
           DEPLOY_PATH: ${{ vars.PRODUCTION_DEPLOY_PATH }}
           IMAGE_REF: ${{ steps.image.outputs.ref }}
+          FRONTEND_IMAGE_REF: ${{ steps.image.outputs.frontend_ref }}
         shell: bash
         run: |
           set -euo pipefail
-          ssh -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" "cd '$DEPLOY_PATH' && chmod +x scripts/*.sh && ./scripts/prepare-linux-deployment.sh && PAYMENT_API_IMAGE='$IMAGE_REF' ./scripts/deploy-linux-vm.sh"
+          ssh -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" "cd '$DEPLOY_PATH' && chmod +x scripts/*.sh && ./scripts/prepare-linux-deployment.sh && PAYMENT_API_IMAGE='$IMAGE_REF' PAYMENT_FRONTEND_IMAGE='$FRONTEND_IMAGE_REF' ./scripts/deploy-linux-vm.sh"

@@ -12,6 +12,8 @@ import org.springframework.data.repository.query.Param;
 public interface AccountRepository extends JpaRepository<AccountEntity, UUID> {
   boolean existsByAccountNumber(String accountNumber);
 
+  List<AccountEntity> findByCustomerIdOrderByOpenedAtDesc(UUID customerId);
+
   /** Locks rows in a stable order to reduce deadlocks for opposite-direction transfers. */
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("select a from AccountEntity a where a.id in :ids order by a.id")

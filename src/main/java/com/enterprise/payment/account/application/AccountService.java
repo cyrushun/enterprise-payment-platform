@@ -53,6 +53,13 @@ public class AccountService {
   }
 
   @Transactional(readOnly = true)
+  public java.util.List<AccountResponse> listForCustomer(UUID customerId) {
+    return accounts.findByCustomerIdOrderByOpenedAtDesc(customerId).stream()
+        .map(this::toResponse)
+        .toList();
+  }
+
+  @Transactional(readOnly = true)
   public AccountResponse get(UUID id) {
     return accounts
         .findById(id)
